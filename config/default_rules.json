@@ -1,0 +1,170 @@
+{
+  "version": "1.01",
+  "rule_version": "2025-2026工信部测评用例",
+  "global_params": {
+    "qci": 0,
+    "rate_column": "RLC",
+    "start_time": "auto",
+    "end_time": "auto",
+    "dl_peak_limit": 1000,
+    "ul_peak_limit": 200,
+    "dl_pass_threshold": 100,
+    "ul_pass_threshold": 20,
+    "scenario_type": "场景",
+    "road_mean_threshold": 800
+  },
+  "business_rules": [
+    {
+      "id": 1,
+      "name": "FTP下载",
+      "display_name": "FTP下载",
+      "group": "FTP",
+      "package": null,
+      "direction": "下载",
+      "calc_seconds": 30,
+      "min_rate": 50,
+      "continuous_count": 10,
+      "flow_min": null,
+      "flow_max": null,
+      "median_flow": null,
+      "enabled": true
+    },
+    {
+      "id": 2,
+      "name": "FTP上传",
+      "display_name": "FTP上传",
+      "group": "FTP",
+      "package": null,
+      "direction": "上传",
+      "calc_seconds": 30,
+      "min_rate": 10,
+      "continuous_count": 10,
+      "flow_min": null,
+      "flow_max": null,
+      "median_flow": null,
+      "enabled": true
+    },
+    {
+      "id": 3,
+      "name": "应用商店下载-泰尔网测",
+      "display_name": "应用商店_小包",
+      "group": "应用商店",
+      "package": "小包",
+      "direction": "下载",
+      "calc_seconds": null,
+      "min_rate": 10,
+      "continuous_count": 1,
+      "flow_min": 60,
+      "flow_max": 140,
+      "median_flow": null,
+      "enabled": true
+    },
+    {
+      "id": 4,
+      "name": "应用商店下载-我的世界",
+      "display_name": "应用商店_大包",
+      "group": "应用商店",
+      "package": "大包",
+      "direction": "下载",
+      "calc_seconds": null,
+      "min_rate": 10,
+      "continuous_count": 5,
+      "flow_min": 1100,
+      "flow_max": 1600,
+      "median_flow": 1300,
+      "enabled": true
+    },
+    {
+      "id": 5,
+      "name": "微信上传-5M",
+      "display_name": "微信_小文件",
+      "group": "微信",
+      "package": "小文件",
+      "direction": "上传",
+      "calc_seconds": null,
+      "min_rate": 3,
+      "continuous_count": 1,
+      "flow_min": 2.5,
+      "flow_max": 8,
+      "median_flow": null,
+      "enabled": true
+    },
+    {
+      "id": 6,
+      "name": "微信上传-200M",
+      "display_name": "微信_大文件",
+      "group": "微信",
+      "package": "大文件",
+      "direction": "上传",
+      "calc_seconds": null,
+      "min_rate": 3,
+      "continuous_count": 10,
+      "flow_min": 160,
+      "flow_max": 240,
+      "median_flow": 220,
+      "enabled": true
+    }
+  ],
+  "voice_rules": [
+    {
+      "id": 101,
+      "name": "VoNR通话成功率",
+      "weight": 6,
+      "full_score_threshold": null,
+      "percentile": null,
+      "enabled": true
+    },
+    {
+      "id": 102,
+      "name": "呼叫建立时长",
+      "weight": 9,
+      "full_score_threshold": null,
+      "percentile": 90,
+      "enabled": true
+    },
+    {
+      "id": 103,
+      "name": "优质通话占比(MOS≥3.5)",
+      "weight": 15,
+      "full_score_threshold": null,
+      "percentile": 10,
+      "enabled": true
+    }
+  ],
+  "ott_rules": [
+    {
+      "id": 201,
+      "name": "微信音视频通话成功率",
+      "weight": 3,
+      "enabled": true
+    },
+    {
+      "id": 202,
+      "name": "接通时延",
+      "weight": 6,
+      "percentile": 90,
+      "enabled": true
+    },
+    {
+      "id": 203,
+      "name": "卡顿时长",
+      "weight": 6,
+      "percentile": 90,
+      "enabled": true
+    },
+    {
+      "id": 204,
+      "name": "音视频MOS",
+      "weight": 3,
+      "percentile": 10,
+      "enabled": true
+    },
+    {
+      "id": 205,
+      "name": "VMOS综合评分",
+      "weight": 9,
+      "algorithm": "泰尔九章",
+      "enabled": true
+    }
+  ]
+}

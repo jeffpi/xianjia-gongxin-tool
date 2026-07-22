@@ -1,0 +1,33 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+
+# 临时文件
+tmp/
+.Trash/
+
+# 输出文件（xlsx 结果文件不进 git）
+*.xlsx
+*.xlsx.tmp
+
+# 打包产物
+*.zip
+*.exe
+*.dmg
+
+# 参考/输入文件
+参考文件/
+输入文件/
+语音类输入文件/
+
+# 历史备份
+历史代码文件/
+
+# IDE
+.vscode/
+.idea/
