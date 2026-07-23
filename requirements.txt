@@ -5,3 +5,4 @@ openpyxl>=3.0.0
 python-calamine>=0.8.0
 xlsxwriter>=3.0.0
 pyxlsb>=1.0.10
+python-minifier>=2.8.0

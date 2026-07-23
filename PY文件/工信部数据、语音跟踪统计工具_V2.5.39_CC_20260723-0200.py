@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-工信部数据、语音跟踪统计工具 V2.5.38_CC
+工信部数据、语音跟踪统计工具 V2.5.39_CC
 GUI: 双标签(速率统计 / 语音VQI) → 选择文件(MMF+可选基准) → 处理 → 内嵌查看结果
 CLI: python3 this.py --cmd
 """
@@ -429,6 +429,102 @@ def detect_segments(ts, dl, ul, dl_th, ul_th, gap, r1=None, r2=None):
     return segs
 
 
+def _extract_time_range(text):
+    """从文本中提取所有时间范围，返回（最早开始小时,分, 最晚结束小时,分）或None
+    支持格式：8:30、8点30、8点半、8.30、08:30、8时30分、8点
+    支持分隔符：到、至、-、~、－、空格
+    支持时段：下午/晚上→+12h（如 下午1点→13点）
+    支持多段：\"8点30到11点55下午12点35到15点53\"→(8,30,15,53)"""
+    import re
+    _time_atoms = [
+        # "8:30" / "08:30" / "8.30"
+        r'(?<!\d)(\d{1,2})[：:\.](\d{1,2})(?!\d)',
+        # "8点30"/"8点半"/"8点" (分钟可选)
+        r'(?<!\d)(\d{1,2})点(半|(\d{1,2}))?(?!\d)',
+        # "8时30分"/"8时" (分钟可选)
+        r'(?<!\d)(\d{1,2})时(?:(\d{1,2})分)?(?!\d)',
+    ]
+    _sep = r'[到至\-\~－～\s]+'
+
+    time_points = []
+    for pat in _time_atoms:
+        for m in re.finditer(pat, text):
+            h = int(m.group(1))
+            g2 = m.group(2) if m.lastindex and m.lastindex >= 2 else None
+            if g2 == '半':
+                minute = 30
+            elif g2 and g2.isdigit():
+                minute = int(g2)
+            else:
+                minute = 0
+            if not (0 <= h < 24 and 0 <= minute < 60):
+                continue
+            # 检测时段：下午/晚上/PM → +12h（h<12时）
+            before = text[max(0, m.start()-15):m.start()]
+            if re.search(r'[下晚][午间]|下午|晚上|pm', before, re.IGNORECASE):
+                if h < 12:
+                    h += 12
+            time_points.append((m.start(), h, minute))
+
+    if len(time_points) < 2:
+        return None
+
+    time_points.sort()
+    pairs = []
+    i = 0
+    while i < len(time_points):
+        pos1, h1, m1 = time_points[i]
+        best_pair = None
+        best_dist = 999999
+        for j in range(i + 1, min(i + 5, len(time_points))):
+            pos2, h2, m2 = time_points[j]
+            between = text[pos1:pos2]
+            if re.search(_sep, between):
+                dist = pos2 - pos1
+                if dist < best_dist:
+                    best_dist = dist
+                    best_pair = (h1, m1, h2, m2)
+        if best_pair:
+            pairs.append(best_pair)
+            for k in range(i + 1, len(time_points)):
+                if time_points[k][0] >= pos1 + best_dist - 10:
+                    i = k
+                    break
+            else:
+                i += 1
+        else:
+            i += 1
+
+    if not pairs:
+        return None
+
+    first_h, first_m, _, _ = min(pairs, key=lambda x: (x[0], x[1]))
+    _, _, last_h, last_m = max(pairs, key=lambda x: (x[2], x[3]))
+
+    if last_h * 60 + last_m <= first_h * 60 + first_m:
+        return None
+
+    return (first_h, first_m, last_h, last_m)
+
+
+def _find_time_in_paths(dirs, files):
+    """从目录名和文件路径中提取时间范围。优先目录名，其次文件路径"""
+    for d in dirs:
+        dirname = os.path.basename(d.rstrip('/\\\\'))
+        result = _extract_time_range(dirname)
+        if result:
+            return result
+    for f in files:
+        parent = os.path.basename(os.path.dirname(f))
+        result = _extract_time_range(parent)
+        if result:
+            return result
+        result = _extract_time_range(os.path.basename(f))
+        if result:
+            return result
+    return None
+
+
 def _extract_trace_id(path):
     """从文件路径中提取用户跟踪ID, 如 '用户跟踪ID=553' → '553'"""
     import re
@@ -533,7 +629,7 @@ def process(files, qci_list=None, dl_clip=1000, ul_clip=200, callback=None, canc
     # 边界保护：若所有文件均无法读取(如ALL_FTP_DETAIL_)，dfs为空，避免pd.concat报错
     if not dfs:
         log("警告: 所有文件均无法读取有效数据，无可处理数据", 100)
-        version = 'V2.5.38_CC'
+        version = 'V2.5.39_CC'
         timestamp = datetime.now().strftime('%Y%m%d-%H%M')
         out = f'联通/电信最终输出_{version}_{timestamp}.xlsx'
         with pd.ExcelWriter(out, engine='openpyxl') as w:
@@ -627,7 +723,7 @@ def process(files, qci_list=None, dl_clip=1000, ul_clip=200, callback=None, canc
             log(f"警告: 数据中无QCI={qci_list}的记录，可用QCI: {avail_str}", 28)
             log(f"建议: 重新选择QCI后再次运行", 28)
             # 生成空输出文件
-            version = 'V2.5.38_CC'
+            version = 'V2.5.39_CC'
             timestamp = datetime.now().strftime('%Y%m%d-%H%M')
             out = f'联通/电信最终输出_{version}_{timestamp}.xlsx'
             with pd.ExcelWriter(out, engine='openpyxl') as w:
@@ -1376,7 +1472,7 @@ def process(files, qci_list=None, dl_clip=1000, ul_clip=200, callback=None, canc
         all_results[op] = _process_one_operator(df_op, op, base_op, has_base_op)
 
     # 生成输出文件名（按实际运营商命名）
-    version = 'V2.5.38_CC'
+    version = 'V2.5.39_CC'
     timestamp = datetime.now().strftime('%Y%m%d-%H%M')
     ops_in_output = [op for op in operators_list if op in all_results]
     if len(ops_in_output) == 1:
@@ -2904,7 +3000,7 @@ def process_vqi(files, callback=None, cancel_check=None, progress_cb=None, time_
     df_summary_data_voice = pd.DataFrame(summary_data)
 
     # 输出文件名
-    version = 'V2.5.38_CC'
+    version = 'V2.5.39_CC'
     timestamp = datetime.now().strftime('%Y%m%d-%H%M')
     out = f'语音VQI输出_{version}_{timestamp}.xlsx'
 
@@ -3566,9 +3662,10 @@ if GUI_OK:
     class MainWindow(QMainWindow):
         def __init__(self):
             super().__init__()
-            self.setWindowTitle("工信部数据、语音跟踪统计工具 V2.5.38_CC")
+            self.setWindowTitle("工信部数据、语音跟踪统计工具 V2.5.39_CC")
             self.files = []; self.last_out = None
             self.base_file = None  # 用户可选的基准文件
+            self._time_user_set = False  # 用户手动改过时间→不再自动识别
             # VQI相关实例变量
             self.vqi_files = []
             self.vqi_base_file = None
@@ -3951,9 +4048,11 @@ if GUI_OK:
 
         def dropEvent(self, event):
             new = []
+            dropped_dirs = []
             for u in event.mimeData().urls():
                 f = u.toLocalFile()
                 if os.path.isdir(f):
+                    dropped_dirs.append(f)
                     for root, dirs, files in os.walk(f):
                         for fn in files:
                             low = fn.lower()
@@ -3964,51 +4063,23 @@ if GUI_OK:
                     if low.endswith(('.xlsx', '.xls', '.zip', '.csv', '.mmf', '.tmf')):
                         new.append(f)
             if new:
-                # 从路径中自动提取时间范围
-                _time_found = None
-                _time_patterns = [
-                    # "08:50-10:25" / "8点50到10点25"
-                    r'(\d{1,2})[点点:：](\d{1,2})[到至\-~]+(\d{1,2})[点点:：](\d{1,2})',
-                    # "8时50分到10时25分"
-                    r'(\d{1,2})时(\d{1,2})分[到至\-~]+(\d{1,2})时(\d{1,2})分',
-                    # "12点到13点30" / "12点30到13点"（分钟可选）
-                    r'(\d{1,2})点(\d{1,2})?[到至\-~]+(\d{1,2})点(\d{1,2})?',
-                ]
-                for f in new:
-                    for pat in _time_patterns:
-                        m = re.search(pat, f)
-                        if m:
-                            g = m.groups()
-                            if len(g) == 4 and (g[1] is None or g[3] is None):
-                                # "12点到13点30"等分钟可选模式：缺少的分默认为0
-                                h1, h2 = int(g[0]), int(g[2])
-                                m1 = int(g[1]) if g[1] else 0
-                                m2 = int(g[3]) if g[3] else 0
-                            else:
-                                h1, m1, h2, m2 = int(g[0]), int(g[1]), int(g[2]), int(g[3])
-                            if 0 <= h1 < 24 and 0 <= m1 < 60 and 0 <= h2 < 24 and 0 <= m2 < 60:
-                                if _time_found and _time_found != (h1, m1, h2, m2):
-                                    self.lt.append("检测到多个不同时间范围，请手动设置")
-                                    _time_found = None
-                                    break
-                                _time_found = (h1, m1, h2, m2)
-                    if _time_found is None and pat != _time_patterns[-1]:
-                        continue
-                if _time_found:
-                    h1, m1, h2, m2 = _time_found
-                    # 检查当前激活标签，填入对应时间控件
-                    current_tab = self.centralWidget().currentIndex()
-                    if current_tab == 1:  # VQI标签
-                        self.vqi_cb_time.setChecked(True)
-                        self.vqi_time_start.setTime(QTime(h1, m1))
-                        self.vqi_time_end.setTime(QTime(h2, m2))
-                        if hasattr(self, 'vqi_lt'):
-                            self.vqi_lt.append(f"自动识别时间: {h1:02d}:{m1:02d} ~ {h2:02d}:{m2:02d}")
-                    else:  # 速率统计标签
-                        self.cb_time.setChecked(True)
-                        self.time_start.setTime(QTime(h1, m1))
-                        self.time_end.setTime(QTime(h2, m2))
-                        self.lt.append(f"自动识别时间: {h1:02d}:{m1:02d} ~ {h2:02d}:{m2:02d}")
+                # 自动提取时间范围（仅用户未手动修改时）
+                if not self._time_user_set:
+                    _time_found = _find_time_in_paths(dropped_dirs, new)
+                    if _time_found:
+                        h1, m1, h2, m2 = _time_found
+                        current_tab = self.centralWidget().currentIndex()
+                        if current_tab == 1:  # VQI标签
+                            self.vqi_cb_time.setChecked(True)
+                            self.vqi_time_start.setTime(QTime(h1, m1))
+                            self.vqi_time_end.setTime(QTime(h2, m2))
+                            if hasattr(self, 'vqi_lt'):
+                                self.vqi_lt.append(f"自动识别时间: {h1:02d}:{m1:02d} ~ {h2:02d}:{m2:02d}")
+                        else:  # 速率统计标签
+                            self.cb_time.setChecked(True)
+                            self.time_start.setTime(QTime(h1, m1))
+                            self.time_end.setTime(QTime(h2, m2))
+                            self.lt.append(f"自动识别时间: {h1:02d}:{m1:02d} ~ {h2:02d}:{m2:02d}")
                 # 检查当前激活的是哪个标签
                 current_tab = self.centralWidget().currentIndex()
                 if current_tab == 1:  # VQI标签
@@ -4145,29 +4216,30 @@ if GUI_OK:
             self.cb_time = QCheckBox(); _params_mid.addWidget(self.cb_time)
             _params_mid.addWidget(QLabel("开始:"))
             self.time_start = QTimeEdit(); self.time_start.setDisplayFormat("HH:mm:ss"); self.time_start.setTime(QTime(0, 0, 0))
-            self.time_start.editingFinished.connect(lambda: self.cb_time.setChecked(True))
+            self.time_start.editingFinished.connect(lambda: (self.cb_time.setChecked(True), setattr(self, '_time_user_set', True)))
             _params_mid.addWidget(self.time_start)
             _params_mid.addWidget(QLabel("结束:"))
             self.time_end = QTimeEdit(); self.time_end.setDisplayFormat("HH:mm:ss"); self.time_end.setTime(QTime(23, 59, 59))
-            self.time_end.editingFinished.connect(lambda: self.cb_time.setChecked(True))
+            self.time_end.editingFinished.connect(lambda: (self.cb_time.setChecked(True), setattr(self, '_time_user_set', True)))
             _params_mid.addWidget(self.time_end)
             self.cb_merge_raw = QCheckBox("合并原始数据"); self.cb_merge_raw.setChecked(False)
             _params_mid.addWidget(self.cb_merge_raw)
             self.cb_annotations = QCheckBox("添加批注"); self.cb_annotations.setChecked(True)
             _params_mid.addWidget(self.cb_annotations); _params_mid.addStretch()
             _outer.addLayout(_params_mid)
-            # === 快速方案 + 业务顺序 ===
+            # === 快速方案 + 业务顺序（两行分开，间距收紧） ===
             _BIZ_SCHEMES = {
                 '方案一': ['FTP上传', 'FTP下载', '微信小包发送', '微信大包发送', '应用商店小文件下载', '应用商店大文件下载'],
                 '方案二': ['FTP下载', 'FTP上传', '应用商店小文件下载', '应用商店大文件下载', '微信小包发送', '微信大包发送'],
             }
             self._current_biz_scheme = '方案一'
-            _scheme_label_row = QHBoxLayout()
+            # 快速方案一行
+            _scheme_label_row = QHBoxLayout(); _scheme_label_row.setSpacing(4)
             _scheme_label_row.addWidget(QLabel("快速方案:"))
             _btn_s1 = QPushButton("方案一"); _btn_s2 = QPushButton("方案二")
             _scheme_label_row.addWidget(_btn_s1); _scheme_label_row.addWidget(_btn_s2); _scheme_label_row.addStretch()
             _outer.addLayout(_scheme_label_row)
-            # 业务顺序表格
+            # 业务执行顺序标签一行
             _outer.addWidget(QLabel("业务执行顺序:"))
             self.biz_order_table = QTableWidget()
             self.biz_order_table.setColumnCount(7)
@@ -4187,18 +4259,22 @@ if GUI_OK:
             def _save_biz_cols(_ci, _os, _ns):
                 QSettings("HubeiTool", "5GDataVoice").setValue(f"biz_col_{_ci}", _ns)
             hh.sectionResized.connect(_save_biz_cols)
+            # 行高根据字号自适应，保证6行完整可见
+            _row_h = max(20, int(self.fs * 2.0))
+            _hdr_h = max(20, int(self.fs * 2.2))
             if sys.platform == 'win32':
-                self.biz_order_table.verticalHeader().setDefaultSectionSize(26)
-                self.biz_order_table.setMaximumHeight(185)
-            else:
-                self.biz_order_table.verticalHeader().setDefaultSectionSize(22)
-                self.biz_order_table.setMaximumHeight(155)
+                _row_h = max(24, _row_h + 4)
+                _hdr_h = max(24, _hdr_h + 4)
+            self.biz_order_table.verticalHeader().setDefaultSectionSize(_row_h)
+            _biz_table_h = 6 * _row_h + _hdr_h + 6
+            self.biz_order_table.setMinimumHeight(_biz_table_h)
+            self.biz_order_table.setMaximumHeight(_biz_table_h + 4)
             self.biz_order_table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
             self.biz_order_table.horizontalHeader().setSectionsClickable(False)
             self.biz_order_table.setSelectionMode(QTableWidget.MultiSelection)
             self.biz_order_table.setSelectionBehavior(QTableWidget.SelectRows)
             self.biz_order_table.setEditTriggers(QTableWidget.DoubleClicked)
-            self.biz_order_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # 禁用横向滚动条
+            self.biz_order_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             _ALL_BIZ = ['FTP上传', 'FTP下载', '微信小包发送', '微信大包发送', '应用商店小文件下载', '应用商店大文件下载']
             for r in range(6):
                 self.biz_order_table.insertRow(r)
@@ -4304,11 +4380,11 @@ if GUI_OK:
             self.vqi_cb_time = QCheckBox(); gpl.addWidget(self.vqi_cb_time, 0, 0)
             gpl.addWidget(QLabel("开始时间:"), 0, 1)
             self.vqi_time_start = QTimeEdit(); self.vqi_time_start.setDisplayFormat("HH:mm:ss"); self.vqi_time_start.setTime(QTime(0, 0, 0))
-            self.vqi_time_start.editingFinished.connect(lambda: self.vqi_cb_time.setChecked(True))
+            self.vqi_time_start.editingFinished.connect(lambda: (self.vqi_cb_time.setChecked(True), setattr(self, '_time_user_set', True)))
             gpl.addWidget(self.vqi_time_start, 0, 2)
             gpl.addWidget(QLabel("结束时间:"), 1, 1)
             self.vqi_time_end = QTimeEdit(); self.vqi_time_end.setDisplayFormat("HH:mm:ss"); self.vqi_time_end.setTime(QTime(23, 59, 59))
-            self.vqi_time_end.editingFinished.connect(lambda: self.vqi_cb_time.setChecked(True))
+            self.vqi_time_end.editingFinished.connect(lambda: (self.vqi_cb_time.setChecked(True), setattr(self, '_time_user_set', True)))
             gpl.addWidget(self.vqi_time_end, 1, 2)
 
             self.vqi_cb_merge_raw = QCheckBox("合并原始数据到结果文件")
@@ -4373,6 +4449,16 @@ if GUI_OK:
                 self.vqi_files = list(dict.fromkeys((self.vqi_files or []) + fs))
                 self.vqi_te.setText("\n".join(os.path.basename(f) for f in self.vqi_files))
                 self.vqi_br.setEnabled(True)
+                # 自动提取时间范围（仅用户未手动修改时）
+                if not self._time_user_set:
+                    _time_found = _find_time_in_paths([], self.vqi_files)
+                    if _time_found:
+                        h1, m1, h2, m2 = _time_found
+                        self.vqi_cb_time.setChecked(True)
+                        self.vqi_time_start.setTime(QTime(h1, m1))
+                        self.vqi_time_end.setTime(QTime(h2, m2))
+                        if hasattr(self, 'vqi_lt'):
+                            self.vqi_lt.append(f"自动识别时间: {h1:02d}:{m1:02d} ~ {h2:02d}:{m2:02d}")
 
         def vqi_cf(self):
             self.vqi_files = []
@@ -4521,6 +4607,15 @@ if GUI_OK:
                     self.br.setEnabled(True)
                 if self.base_file:
                     self.te.append(f"\n[基准] {os.path.basename(self.base_file)}")
+                # 自动提取时间范围（仅用户未手动修改时）
+                if not self._time_user_set:
+                    _time_found = _find_time_in_paths([], self.files)
+                    if _time_found:
+                        h1, m1, h2, m2 = _time_found
+                        self.cb_time.setChecked(True)
+                        self.time_start.setTime(QTime(h1, m1))
+                        self.time_end.setTime(QTime(h2, m2))
+                        self.lt.append(f"自动识别时间: {h1:02d}:{m1:02d} ~ {h2:02d}:{m2:02d}")
 
         def cf(self):
             self.files = []; self.base_file = None
@@ -4706,13 +4801,26 @@ if GUI_OK:
             te = QTextEdit(); te.setReadOnly(True)
             te.setHtml(
                 "<h3 style='text-align:center'>工信部数据、语音跟踪统计工具</h3>"
-                "<p><b>版本:</b> V2.5.38_CC &nbsp; <b>开发者:</b> 孙晓军 &nbsp; "
+                "<p><b>版本:</b> V2.5.39_CC &nbsp; <b>开发者:</b> 孙晓军 &nbsp; "
                 "<b>联系方式:</b> 317827@qq.com</p>"
                 "<p><b>鸣谢：</b>丁先甲，谭润林，赵永川，廖洋（排名不分先后）</p><hr/>"
                 "<h4>更新记录</h4>"
+                "<p><b>2026-07-23</b></p>"
+                "<ul>"
+                "<li><b>V2.5.39_CC</b> 修复布局：快速方案和业务执行顺序恢复为独立两行（不再合并为一行），间距与QCI/时间行一致；版本号更新</li>\n"
+                "</ul>"
                 "<p><b>2026-07-22</b></p>"
                 "<ul>"
-                "<li><b>V2.5.38</b> 恢复V2.5.36应用商店识别逻辑（V2.5.37/38引入的窗口扫描方案效果不如原版）；保留V2.5.37新格式支持+时间解析兼容等改进</li>\n"
+                "<li><b>V2.5.38_CC（完全可用版）</b> 10/10验收通过（商店8段+微信大包+FTP无误判）</li>\n"
+                "<li>汇总页全部公式化：8个指标（阈值占比/平均速率/削峰均值/TOP10%/时长均值/中位值）全部改为Excel公式引用详细过程sheet（普通+数组公式），支持微调详细过程后自动重算</li>\n"
+                "<li>去头尾修剪：FTP峰值25%裁剪、非FTP子段掐首尾、FTP配对长短边对齐等全部删除，段内所有有流量行统一标记</li>\n"
+                "<li>预FTP清理：第一个FTP对开始前不标记任何业务</li>\n"
+                "<li>阈值调整：STORE_L_DL_MIN 500→400, GAP_MERGE 3.0→2.0, 应用商店小文件d≥2→1</li>\n"
+                "<li>步骤⑤兜底：状态机分类失败时先尝试应用商店严格/宽松匹配，不再直接标未知</li>\n"
+                "<li>修复6个应用商店/微信大包识别bug：DL回判小文件阈值修正、未配对FTP不回判小文件、窗口扫描小/大文件分离、清理过度误清、大文件去上限、小文件去时长限制</li>\n"
+                "<li>新增微信大包纯UL累计扫描：UL活跃秒burst累计≥1500即标微信大包发送</li>\n"
+                "<li>应用商店窗口扫描架构修复：多槽位轮转推导（_expect_list），gap序贯分配替代时间中点查表，避免相邻burst误入同一槽位</li>\n"
+                "<li>序列状态机_big_bizs补漏 + DL流量回判去条件 + NameError初始化修复</li>\n"
                 "<li><b>V2.5.37</b> 新增「用户级公共监控」格式输入支持；时间解析兼容括号前带空格；文件过滤不再限制MMF文件名和CSV扩展名；老MMF格式读取规则完整保留</li>\n"
                 "<li><b>V2.5.36</b> Windows界面优化：标签页加浅蓝底+加粗加大+明显分隔(新手友好)；4区域QSplitter手柄加粗可见(可拖动改变大小)；6业务表格行高不压缩(与其它区域一致) — Mac布局不变</li>\n"
                 "</ul>"
