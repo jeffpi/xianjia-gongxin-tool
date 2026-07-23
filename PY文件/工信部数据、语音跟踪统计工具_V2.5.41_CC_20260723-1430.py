@@ -1714,6 +1714,13 @@ def process(files, qci_list=None, dl_clip=1000, ul_clip=200, callback=None, canc
             log(f"  写入 {summary_sheet_name} (公式)...", 88)
             if cancel_check and cancel_check(): raise KeyboardInterrupt('用户取消')
             ws_sum = wb.add_worksheet(summary_sheet_name)
+            # 计算detail sheet中关键列的Excel字母（SINR插入后列号偏移）
+            _has_sinr = 'SINR(dB)' in cols
+            _sinr_letter = _gcl(cols.index('SINR(dB)') + 1) if _has_sinr else None
+            _biz_letter = _gcl(cols.index('businessType') + 1)
+            _dl_letter = _gcl(cols.index('下载速率') + 1)
+            _ul_letter = _gcl(cols.index('上传速率') + 1)
+            _dur_letter = _gcl(cols.index('持续时长') + 1)
             hdrs = ['业务类型',
                     '应用层FTP上传/下载速率\n阈值以上占比(%)',
                     '应用层FTP上传/下载速率\n5M/100M以下占比(%)',
@@ -1721,11 +1728,14 @@ def process(files, qci_list=None, dl_clip=1000, ul_clip=200, callback=None, canc
                     '削峰应用层平均上传/下载\n速率(Mbps)',
                     '上行/下行削峰TOP10%\n峰值速率',
                     '业务时长平均值(s)',
-                    '业务时长中位值(s)',
-                    '手机号']
+                    '业务时长中位值(s)']
+            if _has_sinr:
+                hdrs.append('SINR均值(dB)')
+            hdrs.append('手机号')
+            _n_sum_cols = len(hdrs)
             for ci, h in enumerate(hdrs):
                 ws_sum.write(0, ci, h, fmt_hdr_s)
-            for ci in range(9):
+            for ci in range(_n_sum_cols):
                 ws_sum.set_column(ci, ci, 20)
             _ds = f"'{detail_sheet_name}'"  # 详细过程sheet引用名
             _max_r = n_detail + 10  # 数据末尾行（留余量）
@@ -1736,12 +1746,12 @@ def process(files, qci_list=None, dl_clip=1000, ul_clip=200, callback=None, canc
                 ('▼ 仅完整轮次（代码侧6业务齐全）', fmt_tc, df_detail_complete),
             ]):
                 _sec_start = _all_rows + (2 if _sec_idx == 0 else 1)
-                ws_sum.merge_range(_sec_start, 0, _sec_start, 8, _sec_title, _sec_fmt)
+                ws_sum.merge_range(_sec_start, 0, _sec_start, _n_sum_cols - 1, _sec_title, _sec_fmt)
                 _ri = 0
                 for _biz in _bizs:
                     if _biz not in _sub_df['businessType'].values: continue
                     _is_dl = _biz in DL_BIZ
-                    _rate_col = 'D' if _is_dl else 'E'
+                    _rate_col = _dl_letter if _is_dl else _ul_letter
                     _lim = dl_clip if _is_dl else ul_clip
                     _lo = 100 if _is_dl else 5
                     _rw = _sec_start + 1 + _ri
@@ -1749,29 +1759,35 @@ def process(files, qci_list=None, dl_clip=1000, ul_clip=200, callback=None, canc
                     ws_sum.write(_rw, 0, _biz, fmt_d_s)
                     # 阈值以上占比(%)
                     ws_sum.write_formula(_rw, 1,
-                        f'=IFERROR(COUNTIFS({_ds}!I:I,"{_biz}",{_ds}!{_rate_col}:{_rate_col},">{_lim}")/COUNTIFS({_ds}!I:I,"{_biz}",{_ds}!{_rate_col}:{_rate_col},">0")*100,0)', fmt_d_s2)
+                        f'=IFERROR(COUNTIFS({_ds}!{_biz_letter}:{_biz_letter},"{_biz}",{_ds}!{_rate_col}:{_rate_col},">{_lim}")/COUNTIFS({_ds}!{_biz_letter}:{_biz_letter},"{_biz}",{_ds}!{_rate_col}:{_rate_col},">0")*100,0)', fmt_d_s2)
                     # 5M/100M以下占比(%)
                     ws_sum.write_formula(_rw, 2,
-                        f'=IFERROR(COUNTIFS({_ds}!I:I,"{_biz}",{_ds}!{_rate_col}:{_rate_col},"<{_lo}")/COUNTIFS({_ds}!I:I,"{_biz}",{_ds}!{_rate_col}:{_rate_col},">0")*100,0)', fmt_d_s2)
+                        f'=IFERROR(COUNTIFS({_ds}!{_biz_letter}:{_biz_letter},"{_biz}",{_ds}!{_rate_col}:{_rate_col},"<{_lo}")/COUNTIFS({_ds}!{_biz_letter}:{_biz_letter},"{_biz}",{_ds}!{_rate_col}:{_rate_col},">0")*100,0)', fmt_d_s2)
                     # 平均速率(Mbps)
                     ws_sum.write_formula(_rw, 3,
-                        f'=IFERROR(AVERAGEIFS({_ds}!{_rate_col}:{_rate_col},{_ds}!I:I,"{_biz}",{_ds}!{_rate_col}:{_rate_col},">0"),0)', fmt_d_s2)
+                        f'=IFERROR(AVERAGEIFS({_ds}!{_rate_col}:{_rate_col},{_ds}!{_biz_letter}:{_biz_letter},"{_biz}",{_ds}!{_rate_col}:{_rate_col},">0"),0)', fmt_d_s2)
                     # 削峰平均速率(Mbps) — CLIP到阈值
                     ws_sum.write_array_formula(_rw, 4, _rw, 4,
-                        f'{{=IFERROR(AVERAGE(IF(({_ds}!I2:I{_max_r}="{_biz}")*({_ds}!{_rate_col}2:{_rate_col}{_max_r}>0),IF({_ds}!{_rate_col}2:{_rate_col}{_max_r}>{_lim},{_lim},{_ds}!{_rate_col}2:{_rate_col}{_max_r}))),0)}}', fmt_d_s2)
+                        f'{{=IFERROR(AVERAGE(IF(({_ds}!{_biz_letter}2:{_biz_letter}{_max_r}="{_biz}")*({_ds}!{_rate_col}2:{_rate_col}{_max_r}>0),IF({_ds}!{_rate_col}2:{_rate_col}{_max_r}>{_lim},{_lim},{_ds}!{_rate_col}2:{_rate_col}{_max_r}))),0)}}', fmt_d_s2)
                     # 削峰TOP10%峰值速率
                     ws_sum.write_array_formula(_rw, 5, _rw, 5,
-                        f'{{=IFERROR(AVERAGE(LARGE(IF(({_ds}!I2:I{_max_r}="{_biz}")*({_ds}!{_rate_col}2:{_rate_col}{_max_r}>0),IF({_ds}!{_rate_col}2:{_rate_col}{_max_r}>{_lim},{_lim},{_ds}!{_rate_col}2:{_rate_col}{_max_r})),ROW(INDIRECT("1:"&MAX(1,ROUND(COUNTIFS({_ds}!I:I,"{_biz}",{_ds}!{_rate_col}:{_rate_col},">0")*0.1,0)))))),0)}}', fmt_d_s2)
+                        f'{{=IFERROR(AVERAGE(LARGE(IF(({_ds}!{_biz_letter}2:{_biz_letter}{_max_r}="{_biz}")*({_ds}!{_rate_col}2:{_rate_col}{_max_r}>0),IF({_ds}!{_rate_col}2:{_rate_col}{_max_r}>{_lim},{_lim},{_ds}!{_rate_col}2:{_rate_col}{_max_r})),ROW(INDIRECT("1:"&MAX(1,ROUND(COUNTIFS({_ds}!{_biz_letter}:{_biz_letter},"{_biz}",{_ds}!{_rate_col}:{_rate_col},">0")*0.1,0)))))),0)}}', fmt_d_s2)
                     # 业务时长平均值(s)
                     ws_sum.write_formula(_rw, 6,
-                        f'=IFERROR(AVERAGEIFS({_ds}!G:G,{_ds}!I:I,"{_biz}",{_ds}!G:G,">0"),0)', fmt_d_s2)
+                        f'=IFERROR(AVERAGEIFS({_ds}!{_dur_letter}:{_dur_letter},{_ds}!{_biz_letter}:{_biz_letter},"{_biz}",{_ds}!{_dur_letter}:{_dur_letter},">0"),0)', fmt_d_s2)
                     # 业务时长中位值(s) — 数组公式
                     ws_sum.write_array_formula(_rw, 7, _rw, 7,
-                        f'{{=IFERROR(MEDIAN(IF({_ds}!I2:I{_max_r}="{_biz}",{_ds}!G2:G{_max_r})),0)}}', fmt_d_s2)
+                        f'{{=IFERROR(MEDIAN(IF({_ds}!{_biz_letter}2:{_biz_letter}{_max_r}="{_biz}",{_ds}!{_dur_letter}2:{_dur_letter}{_max_r})),0)}}', fmt_d_s2)
+                    # SINR均值(dB)
+                    _next_col = 8
+                    if _has_sinr:
+                        ws_sum.write_formula(_rw, _next_col,
+                            f'=IFERROR(AVERAGEIFS({_ds}!{_sinr_letter}:{_sinr_letter},{_ds}!{_biz_letter}:{_biz_letter},"{_biz}",{_ds}!{_sinr_letter}:{_sinr_letter},">0"),0)', fmt_d_s2)
+                        _next_col += 1
                     # 手机号 — 保持直接值（无法用简单公式表达）
                     _phones = _sub_df[_sub_df['businessType']==_biz]['手机号'].dropna().unique()
                     _ph_str = '、'.join(sorted([str(p) for p in _phones])) if len(_phones)>0 else ''
-                    ws_sum.write(_rw, 8, _ph_str, fmt_d_s)
+                    ws_sum.write(_rw, _next_col, _ph_str, fmt_d_s)
                     _ri += 1
                 _all_rows = _sec_start + 1 + _ri + 2
             for r in range(0, _all_rows + 2):
