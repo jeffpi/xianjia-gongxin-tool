@@ -4172,7 +4172,7 @@ if GUI_OK:
             left = QWidget(); ll = QVBoxLayout(left)
             ll.setContentsMargins(4, 4, 4, 4)
             ll.setSpacing(4)
-            title = QLabel("工信部数据统计工具 V2.5.38_CC")
+            title = QLabel("工信部数据统计工具 V2.5.39_CC")
             title.setFont(self._font(2)); title.setAlignment(Qt.AlignCenter); ll.addWidget(title)
             vs = QSplitter(Qt.Vertical); vs.setChildrenCollapsible(False)
             if sys.platform == 'win32':
@@ -4355,7 +4355,7 @@ if GUI_OK:
             left = QWidget(); ll = QVBoxLayout(left)
             ll.setContentsMargins(4, 4, 4, 4)
             ll.setSpacing(4)
-            title = QLabel("工信部语音VQI工具 V2.5.38_CC")
+            title = QLabel("工信部语音VQI工具 V2.5.39_CC")
             title.setFont(self._font(2)); title.setAlignment(Qt.AlignCenter); ll.addWidget(title)
             vs = QSplitter(Qt.Vertical); vs.setChildrenCollapsible(False)
             if sys.platform == 'win32':
