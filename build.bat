@@ -53,10 +53,10 @@ if %errorlevel% neq 0 (
 )
 echo.
 
-echo [5/6] Building exe with PyInstaller...
+echo [5/6] Building exe with PyInstaller (onedir mode)...
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
-python -m PyInstaller --onefile --windowed --name "MIIT_DataVoiceTool" ^
+python -m PyInstaller --onedir --windowed --name "MIIT_DataVoiceTool" ^
     --add-data "hubei_monitor_host.txt;." ^
     --hidden-import PySide6 --hidden-import pandas --hidden-import numpy ^
     --hidden-import openpyxl --hidden-import xlsxwriter ^
@@ -77,6 +77,7 @@ echo.
 
 echo ========================================
 echo  Build Complete!
-echo  Output: dist\MIIT_DataVoiceTool.exe
+echo  Output: dist\MIIT_DataVoiceTool\ (directory)
+echo  The exe is inside the folder - small and fast to start
 echo ========================================
 pause
